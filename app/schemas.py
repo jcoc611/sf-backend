@@ -50,7 +50,7 @@ class AddressBase(BaseModel):
 
     @model_validator(mode="after")
     def _require_some_content(self) -> "AddressBase":
-        if all(getattr(self, field) is None for field in _ADDRESS_FIELDS):
+        if all(not (getattr(self, field) or "").strip() for field in _ADDRESS_FIELDS):
             raise ValueError("an address needs at least one of street, city, state, postal_code, or country")
         return self
 

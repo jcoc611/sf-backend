@@ -12,7 +12,7 @@ def _normalize_email(email: str) -> str:
 
 
 def _build_addresses(items) -> list[Address]:
-    return [Address(**address.model_dump()) for address in items]
+    return [Address(**address.model_dump()) for address in (items or [])]
 
 
 def get_contact(db: Session, contact_id: int) -> Contact | None:
@@ -87,6 +87,7 @@ def update_contact(db: Session, contact: Contact, payload: ContactUpdate) -> Con
     for field, value in payload.model_dump(exclude_unset=True, exclude={"addresses"}).items():
         setattr(contact, field, _normalize_email(value) if field == "email" else value)
     if "addresses" in payload.model_fields_set:
+        # Explicit null clears the set, consistent with the other nullable PATCH fields.
         contact.addresses = _build_addresses(payload.addresses)
     db.commit()
     db.refresh(contact)

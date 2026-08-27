@@ -68,13 +68,14 @@ def migrate_flat_addresses() -> None:
     Databases written before addresses became their own table stored one flat
     address on the contact. Copy any non-empty set into a `home` address, then
     drop the legacy columns. Safe to call repeatedly: once the columns are gone
-    there is nothing to do.
+    there is nothing to do. The column check runs inside the transaction so a
+    concurrent startup that already migrated is seen before we act.
     """
-    columns = {c["name"] for c in inspect(engine).get_columns("contacts")}
-    present = [c for c in LEGACY_ADDRESS_COLUMNS if c in columns]
-    if not present:
-        return
     with engine.begin() as connection:
+        columns = {c["name"] for c in inspect(connection).get_columns("contacts")}
+        present = [c for c in LEGACY_ADDRESS_COLUMNS if c in columns]
+        if not present:
+            return
         select_cols = ", ".join(present)
         rows = connection.execute(
             text(
