@@ -1,5 +1,5 @@
 BASE = "/api/v1/contacts"
-
+PHOTO = "data:image/png;base64,iVBORw0KGgo="
 
 def test_health(client):
     response = client.get("/health")
@@ -144,3 +144,66 @@ def test_delete_contact(client, payload):
 def test_root_lists_entrypoints(client):
     body = client.get("/").json()
     assert body["contacts"] == BASE
+
+
+def test_create_contact_with_photo(client, payload):
+    response = client.post(BASE, json={**payload, "photo": PHOTO})
+    assert response.status_code == 201
+    contact_id = response.json()["id"]
+    assert client.get(f"{BASE}/{contact_id}").json()["photo"] == PHOTO
+
+
+def test_photo_defaults_to_null(client, payload):
+    body = client.post(BASE, json=payload).json()
+    assert body["photo"] is None
+
+
+def test_empty_photo_string_becomes_null(client, payload):
+    body = client.post(BASE, json={**payload, "photo": ""}).json()
+    assert body["photo"] is None
+
+
+def test_photo_must_be_image_data_url(client, payload):
+    response = client.post(BASE, json={**payload, "photo": "not-a-data-url"})
+    assert response.status_code == 422
+
+
+def test_photo_rejects_svg(client, payload):
+    response = client.post(BASE, json={**payload, "photo": "data:image/svg+xml;base64,PHN2Zz4="})
+    assert response.status_code == 422
+
+
+def test_photo_rejects_malformed_base64(client, payload):
+    response = client.post(BASE, json={**payload, "photo": "data:image/png;base64,not base64!!!"})
+    assert response.status_code == 422
+
+
+def test_photo_rejects_non_image_bytes(client, payload):
+    # Valid base64 of plain text with a png prefix.
+    response = client.post(BASE, json={**payload, "photo": "data:image/png;base64,dGhpcyBpcyBub3QgYW4gaW1hZ2U="})
+    assert response.status_code == 422
+
+
+def test_photo_size_limit(client, payload):
+    response = client.post(BASE, json={**payload, "photo": "data:image/png;base64," + "A" * 2_800_001})
+    assert response.status_code == 422
+
+
+def test_put_without_photo_clears_it(client, payload):
+    contact_id = client.post(BASE, json={**payload, "photo": PHOTO}).json()["id"]
+    response = client.put(
+        f"{BASE}/{contact_id}",
+        json={"first_name": "Ada", "last_name": "Lovelace", "email": "ada@example.com"},
+    )
+    assert response.status_code == 200
+    assert response.json()["photo"] is None
+
+
+def test_patch_updates_photo(client, payload):
+    contact_id = client.post(BASE, json=payload).json()["id"]
+    response = client.patch(f"{BASE}/{contact_id}", json={"photo": PHOTO})
+    assert response.status_code == 200
+    assert response.json()["photo"] == PHOTO
+
+    response = client.patch(f"{BASE}/{contact_id}", json={"photo": None})
+    assert response.json()["photo"] is None
