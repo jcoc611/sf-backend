@@ -1,6 +1,6 @@
 from collections.abc import Generator
 
-from sqlalchemy import create_engine, event
+from sqlalchemy import create_engine, event, inspect, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 from sqlalchemy.pool import StaticPool
@@ -45,11 +45,26 @@ def _enable_sqlite_foreign_keys(dbapi_connection, _connection_record) -> None:
     cursor.close()
 
 
+def ensure_column(table: str, column: str, definition: str) -> None:
+    """Add `column` to `table` when an older database predates it.
+
+    create_all() creates missing tables but never alters existing ones, so a
+    persistent database written by an older version gets additive columns here.
+    `definition` must be nullable; existing rows read as NULL.
+    """
+    columns = {c["name"] for c in inspect(engine).get_columns(table)}
+    if column in columns:
+        return
+    with engine.begin() as connection:
+        connection.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {definition}"))
+
+
 def init_db() -> None:
-    """Create tables. Called on startup; safe to call repeatedly."""
+    """Create tables and upgrade older schemas. Safe to call repeatedly."""
     from app import models  # noqa: F401  (register models on Base.metadata)
 
     Base.metadata.create_all(bind=engine)
+    ensure_column("contacts", "photo", "TEXT")
 
 
 def get_db() -> Generator[Session, None, None]:

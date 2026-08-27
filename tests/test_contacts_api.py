@@ -173,6 +173,17 @@ def test_photo_rejects_svg(client, payload):
     assert response.status_code == 422
 
 
+def test_photo_rejects_malformed_base64(client, payload):
+    response = client.post(BASE, json={**payload, "photo": "data:image/png;base64,not base64!!!"})
+    assert response.status_code == 422
+
+
+def test_photo_rejects_non_image_bytes(client, payload):
+    # Valid base64 of plain text with a png prefix.
+    response = client.post(BASE, json={**payload, "photo": "data:image/png;base64,dGhpcyBpcyBub3QgYW4gaW1hZ2U="})
+    assert response.status_code == 422
+
+
 def test_photo_size_limit(client, payload):
     response = client.post(BASE, json={**payload, "photo": "data:image/png;base64," + "A" * 2_800_001})
     assert response.status_code == 422

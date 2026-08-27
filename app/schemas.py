@@ -1,24 +1,51 @@
 from datetime import datetime, timezone
 
+import base64
+import binascii
+
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, computed_field, field_validator
 
-# Roughly 2 MB of image data once base64-decoded.
+# Decoded image size cap.
+MAX_PHOTO_BYTES = 2 * 1024 * 1024
+
+# Early reject on the encoded string, before decoding. Roughly 4/3 the byte cap.
 MAX_PHOTO_DATA_URL_LENGTH = 2_800_000
 
 # Raster formats every browser renders; excludes svg (scriptable) and friends.
 ALLOWED_PHOTO_TYPES = ("png", "jpeg", "gif", "webp")
 
 
+def _matches_format(data: bytes, kind: str) -> bool:
+    """Check the decoded bytes against the declared image type's magic bytes."""
+    if kind == "png":
+        return data.startswith(b"\x89PNG\r\n\x1a\n")
+    if kind == "jpeg":
+        return data.startswith(b"\xff\xd8\xff")
+    if kind == "gif":
+        return data.startswith((b"GIF87a", b"GIF89a"))
+    # webp: RIFF container with WEBP form type at offset 8
+    return data.startswith(b"RIFF") and data[8:12] == b"WEBP"
+
+
 def _validate_photo(value: str | None) -> str | None:
     # Empty string means "no photo" — store null instead.
     if not value:
         return None
-    prefix = value.split(",", 1)[0]
+    prefix, _, encoded = value.partition(",")
     if not any(prefix == f"data:image/{kind};base64" for kind in ALLOWED_PHOTO_TYPES):
         allowed = ", ".join(ALLOWED_PHOTO_TYPES)
         raise ValueError(f"photo must be a base64 data URL of one of: {allowed}")
     if len(value) > MAX_PHOTO_DATA_URL_LENGTH:
         raise ValueError("photo is too large; keep the image under about 2 MB")
+    try:
+        decoded = base64.b64decode(encoded, validate=True)
+    except binascii.Error:
+        raise ValueError("photo payload is not valid base64") from None
+    if len(decoded) > MAX_PHOTO_BYTES:
+        raise ValueError("photo is too large; keep the image under about 2 MB")
+    kind = prefix.removeprefix("data:image/").removesuffix(";base64")
+    if not _matches_format(decoded, kind):
+        raise ValueError("photo data does not match a supported image format")
     return value
 
 
