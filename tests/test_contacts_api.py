@@ -1,5 +1,5 @@
 BASE = "/api/v1/contacts"
-
+PHOTO = "data:image/png;base64,iVBORw0KGgo="
 
 def test_health(client):
     response = client.get("/health")
@@ -146,9 +146,6 @@ def test_root_lists_entrypoints(client):
     assert body["contacts"] == BASE
 
 
-PHOTO = "data:image/png;base64,iVBORw0KGgo="
-
-
 def test_create_contact_with_photo(client, payload):
     response = client.post(BASE, json={**payload, "photo": PHOTO})
     assert response.status_code == 201
@@ -161,8 +158,18 @@ def test_photo_defaults_to_null(client, payload):
     assert body["photo"] is None
 
 
+def test_empty_photo_string_becomes_null(client, payload):
+    body = client.post(BASE, json={**payload, "photo": ""}).json()
+    assert body["photo"] is None
+
+
 def test_photo_must_be_image_data_url(client, payload):
     response = client.post(BASE, json={**payload, "photo": "not-a-data-url"})
+    assert response.status_code == 422
+
+
+def test_photo_rejects_svg(client, payload):
+    response = client.post(BASE, json={**payload, "photo": "data:image/svg+xml;base64,PHN2Zz4="})
     assert response.status_code == 422
 
 

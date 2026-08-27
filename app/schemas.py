@@ -5,12 +5,18 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field, computed_field, fie
 # Roughly 2 MB of image data once base64-decoded.
 MAX_PHOTO_DATA_URL_LENGTH = 2_800_000
 
+# Raster formats every browser renders; excludes svg (scriptable) and friends.
+ALLOWED_PHOTO_TYPES = ("png", "jpeg", "gif", "webp")
+
 
 def _validate_photo(value: str | None) -> str | None:
-    if value is None:
+    # Empty string means "no photo" — store null instead.
+    if not value:
         return None
-    if not value.startswith("data:image/"):
-        raise ValueError("photo must be a base64 data URL starting with data:image/")
+    prefix = value.split(",", 1)[0]
+    if not any(prefix == f"data:image/{kind};base64" for kind in ALLOWED_PHOTO_TYPES):
+        allowed = ", ".join(ALLOWED_PHOTO_TYPES)
+        raise ValueError(f"photo must be a base64 data URL of one of: {allowed}")
     if len(value) > MAX_PHOTO_DATA_URL_LENGTH:
         raise ValueError("photo is too large; keep the image under about 2 MB")
     return value
